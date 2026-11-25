@@ -1,6 +1,6 @@
 # 🛠️ IT Process Automation Toolkit
 
-A collection of Python scripts designed to automate repetitive IT support and system administration tasks. These tools focus on **maintaining system hygiene**, **optimizing storage**, and **reducing human error** in server maintenance — built to production standards for real-world deployment.
+A small Python portfolio project for practising three maintenance tasks: log cleanup, folder organization, and disk usage reporting. It uses the standard library and demonstrates preview modes and basic logging.
 
 ---
 
@@ -8,7 +8,7 @@ A collection of Python scripts designed to automate repetitive IT support and sy
 
 | Script | Purpose |
 |---|---|
-| `log_manager.py` | Compresses logs older than 7 days; deletes those older than 30 days |
+| `log_manager.py` | Compresses `.log` files aged 7–30 days; deletes uncompressed `.log` files older than 30 days. The current scan does not process `.gz` files. |
 | `file_organizer.py` | Sorts Downloads/Temp folders into categorized subfolders |
 | `disk_monitor.py` | Alerts when disk usage exceeds a configurable threshold (default 90%) |
 
@@ -18,14 +18,18 @@ A collection of Python scripts designed to automate repetitive IT support and sy
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/it-automation-toolkit.git
+git clone https://github.com/victorvallecillo/it-automation-toolkit.git
 cd it-automation-toolkit
 
 # Install dependencies (only stdlib — no pip install required)
 python --version   # Python 3.10+ recommended
 ```
 
-### Run any script in Dry-Run mode first (recommended)
+### Preview actions before using real folders
+
+This is a personal learning project and has not been validated on production systems. Start with disposable test folders and review the output before using a real path.
+
+The preview modes still have side effects: every script can write to `automation.log`, and `disk_monitor.py` creates or overwrites `disk_report.txt` even with `--dry-run`. The log manager and file organizer skip their target-file changes in preview mode; the disk monitor skips desktop notifications.
 
 ```bash
 python log_manager.py   --dry-run --dirs /var/log
@@ -39,7 +43,7 @@ python disk_monitor.py  --dry-run --threshold 85
 
 ### 1. `log_manager.py` — Log Rotation & Cleanup
 
-Recursively scans log directories, compresses `.log` files older than **7 days** (gzip), and permanently deletes compressed logs older than **30 days**.
+Recursively scans for `.log` files. It compresses files older than **7 days** but not older than **30 days**; it permanently deletes uncompressed `.log` files older than **30 days**. The current scan does not process existing `.gz` files.
 
 ```bash
 # Scan default directories
@@ -55,8 +59,8 @@ python log_manager.py --dry-run --dirs /var/log
 **Output sample:**
 ```
 INFO     SCANNING /var/log
-INFO     COMPRESS syslog.log  →  syslog.log.gz
-INFO     DELETE   auth.log.gz
+INFO     COMPRESS app.log  →  app.log.gz
+INFO     DELETE   old-app.log
 INFO     SUMMARY  Compressed: 4 | Deleted: 2 | Errors: 0 | Skipped: 12
 ```
 
@@ -127,9 +131,9 @@ Mount Point                    Total       Used       Free   Use%
 
 ---
 
-## 🏗️ Professional Code Standards
+## 🏗️ Implementation notes
 
-All scripts follow production-grade IT scripting practices:
+These scripts demonstrate a few useful practices for a small portfolio project:
 
 ### ✅ Structured Logging
 Every action is written to `automation.log` with timestamps, log levels, and human-readable messages — ready for ingestion by log aggregators (Splunk, ELK, etc.).
@@ -140,8 +144,8 @@ logging.warning("ALERT    /var is at 95.3% capacity (2.3 GiB free).")
 logging.error("PERM-ERR File in use, skipped: app.log")
 ```
 
-### ✅ Dry-Run Mode
-Every script supports `--dry-run`. It simulates all actions and logs what *would* happen — without touching a single file. Essential for testing in production environments.
+### ✅ Preview modes
+The log manager and file organizer log the file actions they would take without changing their target files. The disk monitor suppresses desktop notifications in preview mode. All three still write logs, and the disk monitor still writes its report; preview mode is useful for review but is not a guarantee of a side-effect-free run.
 
 ```bash
 python log_manager.py --dry-run
@@ -164,6 +168,8 @@ except OSError as exc:
 ---
 
 ## ⚙️ Automation / Scheduling
+
+The commands below show scheduling syntax only. Review the directories, retention behavior, permissions, and generated files before scheduling any script. The log manager deletes matching `.log` files older than 30 days, and the organizer moves files; neither operation should be pointed at important data without a deliberate review.
 
 ### Linux — cron
 
@@ -190,14 +196,11 @@ schtasks /create /tn "DiskMonitor" /tr "python C:\Scripts\disk_monitor.py" /sc h
 
 ---
 
-## 📈 Operational Impact
+## 📈 What the project does and does not measure
 
-| Metric | Detail |
-|---|---|
-| **Time saved** | ~2 hours/month per server (weekly cleanup automation) |
-| **Incident prevention** | Eliminates "Disk Full" errors that crash databases and services |
-| **Auditability** | Full action log with timestamps for compliance and troubleshooting |
-| **Safety** | Dry-run mode enables zero-risk testing in production |
+The scripts can apply the configured file-age rules, sort files by extension, and write a disk-usage report when run. The monitor can flag a threshold; it cannot prevent a disk from filling up by itself.
+
+This repository has no measured time-savings, incident-prevention results, or production deployment data. Its value here is as a demonstration of small automation tasks and the need to review their effects.
 
 ---
 
