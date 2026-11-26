@@ -1,6 +1,6 @@
 # 🛠️ IT Process Automation Toolkit
 
-A small Python portfolio project for practising three maintenance tasks: log cleanup, folder organization, and disk usage reporting. It uses the standard library and demonstrates preview modes and basic logging.
+This repo contains three small Python scripts for log cleanup, file sorting, and disk monitoring. It is a personal project for practising routine admin tasks.
 
 ---
 
@@ -27,9 +27,9 @@ python --version   # Python 3.10+ recommended
 
 ### Preview actions before using real folders
 
-This is a personal learning project and has not been validated on production systems. Start with disposable test folders and review the output before using a real path.
+Treat this as a learning project. Try the scripts on a temporary folder before pointing them at real files.
 
-The preview modes still have side effects: every script can write to `automation.log`, and `disk_monitor.py` creates or overwrites `disk_report.txt` even with `--dry-run`. The log manager and file organizer skip their target-file changes in preview mode; the disk monitor skips desktop notifications.
+Preview mode isn't fully read-only: all three scripts write to `automation.log`, and the disk monitor also updates `disk_report.txt`. The log manager won't compress or delete files, the organizer won't move them, and the monitor won't send desktop notifications.
 
 ```bash
 python log_manager.py   --dry-run --dirs /var/log
@@ -43,7 +43,7 @@ python disk_monitor.py  --dry-run --threshold 85
 
 ### 1. `log_manager.py` — Log Rotation & Cleanup
 
-Recursively scans for `.log` files. It compresses files older than **7 days** but not older than **30 days**; it permanently deletes uncompressed `.log` files older than **30 days**. The current scan does not process existing `.gz` files.
+Scans directories for `.log` files. It compresses files between 7 and 30 days old, and deletes uncompressed `.log` files older than 30 days. It doesn't scan existing `.gz` files.
 
 ```bash
 # Scan default directories
@@ -136,7 +136,7 @@ Mount Point                    Total       Used       Free   Use%
 These scripts demonstrate a few useful practices for a small portfolio project:
 
 ### ✅ Structured Logging
-Every action is written to `automation.log` with timestamps, log levels, and human-readable messages — ready for ingestion by log aggregators (Splunk, ELK, etc.).
+Script activity is written to `automation.log` with timestamps and log levels.
 
 ```python
 logging.info("COMPRESS syslog.log  →  syslog.log.gz")
@@ -154,7 +154,7 @@ python log_manager.py --dry-run
 ```
 
 ### ✅ Robust Error Handling
-Scripts catch `PermissionError`, `OSError`, and `shutil.Error` individually — a locked or in-use file is skipped and logged, never crashing the entire run.
+File operations catch common permission and operating-system errors and log them.
 
 ```python
 try:
@@ -169,7 +169,7 @@ except OSError as exc:
 
 ## ⚙️ Automation / Scheduling
 
-The commands below show scheduling syntax only. Review the directories, retention behavior, permissions, and generated files before scheduling any script. The log manager deletes matching `.log` files older than 30 days, and the organizer moves files; neither operation should be pointed at important data without a deliberate review.
+The commands below show the scheduling syntax. Check the paths and retention rules before scheduling them: the log manager deletes old `.log` files, and the organizer moves files.
 
 ### Linux — cron
 
@@ -196,11 +196,9 @@ schtasks /create /tn "DiskMonitor" /tr "python C:\Scripts\disk_monitor.py" /sc h
 
 ---
 
-## 📈 What the project does and does not measure
+## 📈 Results
 
-The scripts can apply the configured file-age rules, sort files by extension, and write a disk-usage report when run. The monitor can flag a threshold; it cannot prevent a disk from filling up by itself.
-
-This repository has no measured time-savings, incident-prevention results, or production deployment data. Its value here is as a demonstration of small automation tasks and the need to review their effects.
+I haven't measured time savings or used these scripts in production. The disk monitor reports when usage passes the chosen threshold; it can't prevent a disk from filling up.
 
 ---
 
