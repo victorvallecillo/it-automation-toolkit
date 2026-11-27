@@ -11,11 +11,11 @@ Usage:
 Author: IT Automation Toolkit
 """
 
-import os
 import platform
 import shutil
 import logging
 import argparse
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -54,26 +54,47 @@ def bytes_to_human(n_bytes: int) -> str:
     return f"{n_bytes} B"
 
 
+def _applescript_string(value: str) -> str:
+    """Quote text for an AppleScript string literal."""
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
+    return f'"{escaped}"'
+
+
 def send_os_notification(title: str, message: str) -> None:
-    """
-    Send a desktop/system notification where possible.
-    Falls back to a log entry on unsupported platforms.
-    """
+    """Send a desktop notification where supported; otherwise write to the log."""
     system = platform.system()
     try:
         if system == "Linux":
-            os.system(f'notify-send "{title}" "{message}"')
-        elif system == "Darwin":           # macOS
-            os.system(
-                f'osascript -e \'display notification "{message}" with title "{title}"\''
+            subprocess.run(
+                ["notify-send", title, message],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        elif system == "Darwin":
+            script = (
+                f"display notification {_applescript_string(message)} "
+                f"with title {_applescript_string(title)}"
+            )
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=True,
+                capture_output=True,
+                text=True,
             )
         elif system == "Windows":
-            # Requires 'plyer' or 'win10toast'; fall back to log.
-            logging.warning("OS-NOTIFY Windows notification not configured. "
-                            "Install 'win10toast' for desktop alerts.")
+            logging.warning("OS-NOTIFY Windows desktop notifications are not configured.")
+            return
+        else:
+            logging.info("OS-NOTIFY Desktop notifications are not supported on this platform.")
             return
         logging.info("NOTIFY   Desktop notification sent: %s", title)
-    except Exception as exc:           # noqa: BLE001
+    except (OSError, subprocess.SubprocessError) as exc:
         logging.error("NOTIFY-ERR Could not send notification: %s", exc)
 
 
@@ -203,6 +224,8 @@ def main():
     parser.add_argument("--paths", nargs="+", default=None,
                         help="Specific paths to check (default: all partitions).")
     args = parser.parse_args()
+    if not 1 <= args.threshold <= 100:
+        parser.error("--threshold must be between 1 and 100.")
 
     if args.dry_run:
         logging.info("════ DRY-RUN MODE ENABLED – no notifications will be sent ════")

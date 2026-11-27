@@ -1,37 +1,27 @@
 """
-log_manager.py
-==============
-Scans defined log directories, compresses files older than 7 days,
-and deletes those older than 30 days.
+Compress old log files and remove old compressed archives.
 
 Usage:
-    python log_manager.py [--dry-run] [--dirs /var/log /tmp/logs]
+    python log_manager.py [--apply] [--dirs /var/log /tmp/logs]
 
-Author: IT Automation Toolkit
+Without --apply, the script previews the actions.
 """
 
-import os
-import gzip
-import shutil
-import logging
 import argparse
+import gzip
+import logging
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# ──────────────────────────────────────────────
-# Configuration
-# ──────────────────────────────────────────────
 DEFAULT_LOG_DIRS = [
-    "/var/log",          # Linux
-    "C:\\Windows\\Logs", # Windows Server
+    "/var/log",
+    "C:\\Windows\\Logs",
 ]
 COMPRESS_AFTER_DAYS = 7
-DELETE_AFTER_DAYS   = 30
-LOG_FILE            = "automation.log"
+DELETE_AFTER_DAYS = 30
+LOG_FILE = "automation.log"
 
-# ──────────────────────────────────────────────
-# Logging setup
-# ──────────────────────────────────────────────
 logging.basicConfig(
     filename=LOG_FILE,
     level=logging.INFO,
@@ -45,10 +35,10 @@ logging.getLogger().addHandler(console)
 
 
 def compress_file(filepath: Path, dry_run: bool) -> bool:
-    """Compress a single log file with gzip. Returns True on success."""
+    """Compress a log file. Return True when the action succeeds or is previewed."""
     gz_path = filepath.with_suffix(filepath.suffix + ".gz")
     if gz_path.exists():
-        logging.info("SKIP     Already compressed: %s", filepath.name)
+        logging.info("SKIP     Archive already exists: %s", gz_path)
         return False
 
     if dry_run:
@@ -69,7 +59,7 @@ def compress_file(filepath: Path, dry_run: bool) -> bool:
 
 
 def delete_file(filepath: Path, dry_run: bool) -> bool:
-    """Delete a log file. Returns True on success."""
+    """Delete an archived log file. Return True when the action succeeds or is previewed."""
     if dry_run:
         logging.info("[DRY-RUN] Would delete:   %s", filepath)
         return True
@@ -85,16 +75,24 @@ def delete_file(filepath: Path, dry_run: bool) -> bool:
     return False
 
 
-def process_directory(directory: str, dry_run: bool) -> dict:
-    """Walk *directory* and apply compress / delete rules."""
+def _modified_at(filepath: Path) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(filepath.stat().st_mtime)
+    except OSError as exc:
+        logging.error("STAT-ERR %s | %s", filepath, exc)
+        return None
+
+
+def process_directory(directory: str, dry_run: bool) -> dict[str, int]:
+    """Compress old .log files and delete old .log.gz archives in one directory tree."""
     stats = {"compressed": 0, "deleted": 0, "errors": 0, "skipped": 0}
     now = datetime.now()
-    compress_threshold = now - timedelta(days=COMPRESS_AFTER_DAYS)
-    delete_threshold   = now - timedelta(days=DELETE_AFTER_DAYS)
+    compress_before = now - timedelta(days=COMPRESS_AFTER_DAYS)
+    delete_before = now - timedelta(days=DELETE_AFTER_DAYS)
 
     path = Path(directory)
-    if not path.exists():
-        logging.warning("DIR-MISS Directory not found: %s", directory)
+    if not path.is_dir():
+        logging.warning("DIR-MISS Not a directory or not found: %s", directory)
         return stats
 
     logging.info("─" * 60)
@@ -103,50 +101,85 @@ def process_directory(directory: str, dry_run: bool) -> dict:
     for item in path.rglob("*.log"):
         if not item.is_file():
             continue
-
-        try:
-            mtime = datetime.fromtimestamp(item.stat().st_mtime)
-        except OSError as exc:
-            logging.error("STAT-ERR %s | %s", item, exc)
+        modified_at = _modified_at(item)
+        if modified_at is None:
             stats["errors"] += 1
             continue
-
-        if mtime < delete_threshold:
-            ok = delete_file(item, dry_run)
-            stats["deleted"] += ok
-            stats["errors"]  += not ok
-        elif mtime < compress_threshold:
+        if modified_at < compress_before:
+            archive = item.with_suffix(item.suffix + ".gz")
+            if archive.exists():
+                logging.info("SKIP     Archive already exists: %s", archive)
+                stats["skipped"] += 1
+                continue
             ok = compress_file(item, dry_run)
-            stats["compressed"] += ok
-            stats["errors"]     += not ok
+            stats["compressed"] += int(ok)
+            stats["errors"] += int(not ok)
+        else:
+            stats["skipped"] += 1
+
+    for item in path.rglob("*.log.gz"):
+        if not item.is_file():
+            continue
+        modified_at = _modified_at(item)
+        if modified_at is None:
+            stats["errors"] += 1
+            continue
+        if modified_at < delete_before:
+            ok = delete_file(item, dry_run)
+            stats["deleted"] += int(ok)
+            stats["errors"] += int(not ok)
         else:
             stats["skipped"] += 1
 
     return stats
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Log Manager – compress & purge old logs.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Simulate actions without modifying any files.")
-    parser.add_argument("--dirs", nargs="+", default=DEFAULT_LOG_DIRS,
-                        help="Directories to scan (overrides defaults).")
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Log Manager — compress old logs and remove old archives."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply file changes. Preview mode is the default.",
+    )
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview actions without changing log files (default).",
+    )
+    parser.add_argument(
+        "--dirs",
+        nargs="+",
+        default=DEFAULT_LOG_DIRS,
+        help="Directories to scan (overrides defaults).",
+    )
     args = parser.parse_args()
+    dry_run = not args.apply
 
-    if args.dry_run:
-        logging.info("════ DRY-RUN MODE ENABLED – no files will be modified ════")
+    if dry_run:
+        logging.info("════ PREVIEW MODE — pass --apply to change files ════")
+    else:
+        logging.info("════ APPLY MODE — files may be compressed or deleted ════")
 
     totals = {"compressed": 0, "deleted": 0, "errors": 0, "skipped": 0}
     for directory in args.dirs:
-        result = process_directory(directory, dry_run=args.dry_run)
-        for k in totals:
-            totals[k] += result[k]
+        result = process_directory(directory, dry_run=dry_run)
+        for key in totals:
+            totals[key] += result[key]
 
     logging.info("─" * 60)
-    logging.info(
-        "SUMMARY  Compressed: %d | Deleted: %d | Errors: %d | Skipped: %d",
-        totals["compressed"], totals["deleted"], totals["errors"], totals["skipped"],
-    )
+    if dry_run:
+        logging.info(
+            "SUMMARY  Would compress: %d | Would delete: %d | Errors: %d | Skipped: %d",
+            totals["compressed"], totals["deleted"], totals["errors"], totals["skipped"],
+        )
+    else:
+        logging.info(
+            "SUMMARY  Compressed: %d | Deleted: %d | Errors: %d | Skipped: %d",
+            totals["compressed"], totals["deleted"], totals["errors"], totals["skipped"],
+        )
 
 
 if __name__ == "__main__":

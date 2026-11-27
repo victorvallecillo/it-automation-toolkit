@@ -5,7 +5,7 @@ Sorts a target folder (Downloads, Temp, etc.) by file extension,
 moving files into categorized subfolders to keep workstations clean.
 
 Usage:
-    python file_organizer.py [--dry-run] [--dir ~/Downloads]
+    python file_organizer.py [--apply] [--dir ~/Downloads]
 
 Author: IT Automation Toolkit
 """
@@ -140,21 +140,28 @@ def main():
     parser = argparse.ArgumentParser(
         description="File Organizer – sort a folder into categorized subfolders."
     )
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Simulate actions without moving any files.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true",
+                      help="Move files. Preview mode is the default.")
+    mode.add_argument("--dry-run", action="store_true",
+                      help="Preview moves without changing files (default).")
     parser.add_argument("--dir", default=DEFAULT_TARGET_DIR,
                         help="Directory to organize (default: ~/Downloads).")
     args = parser.parse_args()
 
-    if args.dry_run:
-        logging.info("════ DRY-RUN MODE ENABLED – no files will be moved ════")
+    dry_run = not args.apply
+    if dry_run:
+        logging.info("════ PREVIEW MODE — pass --apply to move files ════")
+    else:
+        logging.info("════ APPLY MODE — files will be moved ════")
 
-    stats = organize_directory(args.dir, dry_run=args.dry_run)
+    stats = organize_directory(args.dir, dry_run=dry_run)
 
     logging.info("─" * 60)
+    action = "Would move" if dry_run else "Moved"
     logging.info(
-        "SUMMARY  Moved: %d | Errors: %d | Skipped (dirs/etc): %d",
-        stats["moved"], stats["errors"], stats["skipped"],
+        "SUMMARY  %s: %d | Errors: %d | Skipped (dirs/etc): %d",
+        action, stats["moved"], stats["errors"], stats["skipped"],
     )
 
 
